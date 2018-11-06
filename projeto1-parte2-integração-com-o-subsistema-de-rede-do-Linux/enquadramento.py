@@ -2,6 +2,7 @@
 #Interpreta o arquivo como utf-8 (aceita acentos)
 from enum import Enum
 from binascii import unhexlify
+import time
 
 class Enquadramento:
 
@@ -17,6 +18,7 @@ class Enquadramento:
 		self.buf_poller = bytearray()
 		self.serial.reset_input_buffer()
 		self.serial.reset_output_buffer()
+		self.last_time = time.time()
 		
 
 	def envia(self, dado):
@@ -99,7 +101,7 @@ class Enquadramento:
 			return self.Estados.rx
 
 	def _func_rx(self, byte_recebido):
-
+		self.last_time = time.time()
 		if (byte_recebido == b'\x7E'):
 			return self.Estados.rx
 		elif (byte_recebido == b'\x7D'): #7D
@@ -107,11 +109,10 @@ class Enquadramento:
 		elif (byte_recebido != b'\x7E' and byte_recebido != b'\x7D'):
 			self.buf = self.buf + byte_recebido
 			return self.Estados.recepcao
-		#else: IMPLEMENTAR TIMEOUT
-			#return self.estado = ocioso
 
 
 	def _func_recepcao(self, byte_recebido):
+		self.last_time = time.time()
 		if (byte_recebido != b'\x7E' and byte_recebido != b'\x7D'):
 			self.buf = self.buf + byte_recebido
 			if (len(self.buf) > self.max_bytes):
@@ -125,6 +126,7 @@ class Enquadramento:
 		
 
 	def _func_esc(self, byte_recebido):
+		self.last_time = time.time()
 		if (byte_recebido == b'\x7E' or byte_recebido == b'\x7D'):
 			self.buf = bytearray()
 			return self.Estados.ocioso
@@ -137,4 +139,10 @@ class Enquadramento:
 		byte_transformado = byte_recebido ^ 0x20
 		return byte_transformado
 
+	def func_timeout(self):
+		if(self.estado in [self.Estados.rx, self.Estados.recepcao, self.Estados.esc]):
+			timedif = time.time()-self.last_time
+			if(timedif>self.timeout):
+				self.buf = bytearray()
+				self.estado = self.Estados.ocioso
 

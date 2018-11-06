@@ -21,7 +21,7 @@ além de enviar e receber quadros através desse tipo de interface'''
     IFF_TUN = 1
     IFF_UP = 1
     IFF_RUNNING = 0x40
-    PROTO_IPV4=0x800
+    PROTO_IPV4=0x0800
     PROTO_IPV6=0x866d
 
     TUNSETIFF = 0x400454ca

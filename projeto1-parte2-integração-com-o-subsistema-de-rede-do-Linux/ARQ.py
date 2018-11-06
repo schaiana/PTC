@@ -4,8 +4,7 @@ from enum import Enum
 from binascii import unhexlify
 import enlayce
 import enquadramento
-import select
-
+import time
 
 class ARQ:
 
@@ -24,6 +23,9 @@ class ARQ:
 		self.read = False
 		self.dado_envio = bytearray()
 		self.idSessao = idSessao
+		self.last_time = time.time()
+		self.maxTentativas = 5
+		self.nTentativas = 0
 
 	def envia(self, dado):
 
@@ -31,29 +33,10 @@ class ARQ:
 			return
 		self.evento = self.TipoEvento.payload
 		self.dado = dado
-		#nTentativas = 3
-		#print('ARQ enviando: {}'.format(self.dado.))
-		#while (True):
-			
-			#if (self._handle(self.evento) == self.Estados.ocioso):
+
 		self._handle(self.evento)
 		#print ('ARQ Payload tratado e enviado.')
 		return
-			#else:
-				#print ('Aguardando ACK por {} segundos'.format(self.timeout))
-			#	if self.read:
-			#		print('ARQ envia 1')
-			#		pass		
-					#print(self.buf)
-					#print(self.read)			
-					#print ('Recebeu algo pela serial bla')
-			#	else:
-			#		print ('Timeout!')
-			#		nTentativas = nTentativas-1
-			#		if(nTentativas == 0):
-			#			return
-			#		self.enq.envia(self.dado_envio)
-			#		self._set_timeout()
 					
 	def recebe(self):
 		tam, self.buf = self.enq.recebe()
@@ -65,36 +48,6 @@ class ARQ:
 
 		self._handle(self.evento)
 		return len(self.buf), self.buf
-		#temp = self.payload_recebido
-		#self.payload_recebido = bytearray()
-		#return len(temp), temp
-
-		""" nTentativas = 5
-		while (True):					
-			self.read, write, error = select.select([self.enq.serial], [], [], self.timeout/10)
-			tam, self.buf = self.enq.recebe()
-
-			if (self.read==0) or (self.buf == bytearray()):
-				#print(1)
-				return 0, bytearray()
-				if (nTentativas == 0):
-					return 0, bytearray()
-				nTentativas = nTentativas-1	
-				print('Timeout')
-				#continue #enquanto não receber um frame válido, tenta de novo
-
-			self.evento = self.TipoEvento.quadro
-
-			if (self._handle(self.evento) == self.Estados.ocioso):
-				#print('ARQ recebeu: {}'.format(self.buf))
-				return len(self.buf), self.buf """
-
-
-	def _set_timeout(self):
-
-		self.read, write, error = select.select([self.enq.serial], [], [], self.timeout)
-
-		return
 
 	def _handle(self, evento):
 		if (self.estado == self.Estados.ocioso):
@@ -119,7 +72,6 @@ class ARQ:
 
 	def _func_espera(self, evento):
 		if (evento == self.TipoEvento.payload):
-			#self._set_timeout()
 			tam, self.buf = self.enq.recebe()
 			if (tam == 0):
 				return self.Estados.espera
@@ -130,13 +82,11 @@ class ARQ:
 		elif(evento == self.TipoEvento.quadro):
 			if (self.buf ==  bytearray()):
 				return self.Estados.ocioso
-			return self._func_quadro()
-		elif(evento == self.TipoEvento.timeout):			
-			return self.Estados.espera
+			return self._func_quadro()		
+		return self.Estados.espera
 
 
 	def _func_payload(self):
-
 		controle = 0b00000000
 		if (self.n == 1):
 			controle = controle | 0b00001000
@@ -144,7 +94,8 @@ class ARQ:
 		self.dado_envio = bytearray()
 		self.dado_envio = self.dado_envio + bytes([controle]) + bytes([self.idSessao]) + self.dado
 		self.enq.envia(self.dado_envio)	
-		#self._set_timeout()		
+		self.last_time = time.time()
+		self.nTentativas = self.nTentativas +1		
 		return self.Estados.espera
 
 	def _func_quadro(self):
@@ -155,8 +106,8 @@ class ARQ:
 		controle = self.buf[0]
 		if (((controle & 0b10000000) >> 7) == 1): #quadro de ack
 			if (((controle & 0b00001000) >> 3) == self.n):
-				#cancela o timeout
-				#print ('Recebeu ACK{}'.format(self.n))
+				self.last_time = time.time()
+				self.nTentativas = 0
 				self.buf = bytearray()
 				return self.Estados.ocioso
 			else:
@@ -190,3 +141,14 @@ class ARQ:
 
 		self.enq.envia(ack)
 	
+	def func_timeout(self):
+		if(self.estado == self.Estados.espera):
+			time_dif = time.time()-self.last_time
+			if(time_dif>self.timeout):
+				if(self.nTentativas>self.maxTentativas): # se excedeu o número de tentantivas, desiste de enviar o payload
+					self.last_time = time.time()
+					self.nTentativas = 0
+					self.buf = bytearray()
+					self.estado = self.Estados.ocioso
+				else:
+					self._func_payload()

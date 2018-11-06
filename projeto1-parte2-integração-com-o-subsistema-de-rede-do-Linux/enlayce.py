@@ -14,22 +14,22 @@ import sys
 class Enlayce:
 
 
-	def __init__(self, p_serial, idSessao, timeout, bytes_min = 0, bytes_max = 256):
+	def __init__(self, p_serial, idSessao, timeout, ip1, ip2, bytes_min = 0, bytes_max = 256):
 
 		self.min_bytes = bytes_min
 		self.max_bytes = bytes_max
 		self.timeout = timeout
 		self.ser = serial.Serial(p_serial, 9600, timeout = self.timeout) #timeout = timeout do método read da Serial
-		self.enq = enquadramento.Enquadramento(self.ser, self.timeout)
+		self.enq = enquadramento.Enquadramento(self.ser, 0.05)
 		self.arq = ARQ.ARQ(self.enq, idSessao, self.timeout)
 		self.sessao = sessao.Sessao(self.arq, self.timeout)
-		self.tun = Tun("tun1","10.0.0.1","10.0.0.2",mask="255.255.255.252",mtu=1500,qlen=4)
+		self.tun = Tun("tun1",ip1,ip2,mask="255.255.255.252",mtu=1500,qlen=4)
 		self.tun.start()
 		self.cb_tun = CallbackTun(self.tun, self) #self = próprio enlayce
 		self.sched = poller.Poller()
 		self.sched.adiciona(self.cb_tun)
 		self.cb_serial = CallbackStdin(self)
-		self.timer = CallbackTimer(timeout, self)
+		self.timer = CallbackTimer(0.01, self)
 		self.sched.adiciona(self.cb_serial)
 		self.sched.adiciona(self.timer)
 		self.sched.despache()
@@ -37,8 +37,9 @@ class Enlayce:
 
 	def envia(self, dado):
 		#print('Enlayce envia!')
-		#if (self.sessao.conectado() == False):
-		#	self.sessao.inicia()	
+		if (self.sessao.conectado() == False):
+			self.sessao.inicia()
+			return	
 		print('Enviando')
 		print(dado)	
 		return self.sessao.envia(dado) #retorna para a aplicação quando chegar o ack da outra aplicação, desbloqueando a mesma para um novo envio
@@ -57,6 +58,10 @@ class Enlayce:
 	def encerra(self):
 		return self.sessao.encerra()
 
+	def func_timeout(self):
+		self.enq.func_timeout()
+		self.arq.func_timeout()
+		self.sessao.func_timeout()
 
 class CallbackTun(poller.Callback):
     
@@ -100,10 +105,11 @@ class CallbackTimer(poller.Callback):
 		self.enl = enl
         
 	def handle_timeout(self):
+		self.enl.func_timeout()
 		#if(self.enl.sessao.estado == sessao.Sessao.Estados.disc):
-		if(self.enl.sessao.conectado()==False):
-			print('Conectando...')
-			self.enl.sessao.inicia()
+		#if(self.enl.sessao.conectado()==False):
+		#	print('Conectando...')
+		#	self.enl.sessao.inicia()
 		#print('Timer: t=', time.time()-CallbackTimer.t0)
         
 

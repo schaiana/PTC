@@ -4,7 +4,7 @@
 from enum import Enum
 import ARQ
 import enlayce
-import select
+import time
 
 class Sessao:
 	Estados = Enum('Estados', 'disc hand1 hand2 con check half1 half2')
@@ -22,9 +22,12 @@ class Sessao:
 		#self.stop = False
 		self.CR = b'\x00'
 		self.CC = b'\x01'
+		#self.KR = b'\x02'
+		#self.KC = b'\x03'
 		self.DR = b'\x04'
 		self.DC = b'\x05'
 		self.proto = b'\xff'
+		self.last_time = time.time()
 
 
 	def conectado(self):
@@ -38,8 +41,9 @@ class Sessao:
 			self._handle()
 
 	def inicia(self):		
-		#while (True):
 		if (not(self.estado in [self.Estados.disc, self.Estados.hand1, self.Estados.hand2])):
+			return
+		if(self.start==True):
 			return
 		self.estado = self.Estados.disc
 		self.start = True				
@@ -62,7 +66,6 @@ class Sessao:
 				
 
 	def recebe(self):
-		#while (True):
 		#print('Sessão recebe')
 		tam, self.dado_recebido = self.arq.recebe()
 		if (self._handle() == False):
@@ -81,11 +84,6 @@ class Sessao:
 		self._func_DR()
 		self.estado = self.Estados.half1
 		while (True):
-
-			#if (self.estado == self.Estados.half1):
-				#self.stop = True
-				#self._set_timeout(timeout)
-
 			if (self._handle() == False):
 				if len(self.buf) > 0:
 					return self.buf
@@ -124,17 +122,15 @@ class Sessao:
 		if (self.start == True):
 			#envia o CR montado para ARQ
 			print ('Iniciando negociação de conexão...')
-			self._set_timeout(self.timeout)
 			self._func_CR()
+			self.last_time = time.time()
 			return self.Estados.hand1
 		else:
-			#print('1')
 			#tam, self.buf = self.arq.recebe()
 			self.buf = self.dado_recebido
 			#print(self.buf)
 			tam = len(self.dado_recebido)
 			if (tam == 0):
-				#print('2')
 				return self.Estados.disc
 			#envia o CC montado para ARQ
 			if (self.buf[2:3] == self.proto[0:1] and self.buf[3:4] == self.CR[0:1]):
@@ -147,19 +143,19 @@ class Sessao:
 			return self.Estados.disc
 
 	def _func_CR(self):
+		self.dado_envio = bytearray()
 		self.dado_envio = self.dado_envio + self.proto + self.CR
 		print ('Enviando CR.')
 		self.arq.envia(self.dado_envio)	
+		self.last_time = time.time()
 		print('CR enviado')
 		self.dado_envio = bytearray()
-		
+
 	def _func_hand1 (self):	
 		#tam, self.buf = self.arq.recebe()
 		self.buf = self.dado_recebido
 		tam = len(self.buf)
 		if (tam == 0):
-			#timeout
-			self._set_timeout(self.timeout)
 			self._func_CR()
 			return self.Estados.hand1
 
@@ -187,9 +183,6 @@ class Sessao:
 
 			
 	def _func_con (self):
-		#if (self.stop == True):
-			#self._func_DR()
-			#return self.Estados.half1
 		if (self.dado != bytearray()):
 			self.arq.envia(self.dado)
 			self.dado = bytearray()
@@ -218,9 +211,7 @@ class Sessao:
 		self.buf = self.dado_recebido
 		tam = len(self.buf)
 		if (tam == 0):
-			#timeout
 			self._func_DR()
-			#self._set_timeout(self.timeout)
 			return self.Estados.half1
 
 		if (self.buf[3:4] == self.DR[0:1]):
@@ -228,17 +219,13 @@ class Sessao:
 			self.dado_envio = bytearray()
 			self.dado_envio = self.dado_envio + self.proto + self.DC
 			print ('Enviando DC.')
-			#self._set_timeout(self.timeout)
 			#print(self.dado_envio)
 			self.arq.envia(self.dado_envio)
 			print('Sessão encerrou!')
 			return self.Estados.disc
-		#elif (self.buf[2:3] == b'\x00'):
-			#self.arq.recebe(self.buf)
 		return self.Estados.half1
 
 	def _func_half2 (self): 
-		#self._set_timeout(self.timeout_grande)	
 		#tam, self.buf = self.arq.recebe()
 		self.buf = self.dado_recebido
 		tam = len(self.buf)
@@ -247,13 +234,20 @@ class Sessao:
 			return self.Estados.disc		
 		if(self.buf[3:4] == self.DR[0:1]):
 			self._func_DR()
-			self._set_timeout(timeout_grande)
 			return self.Estados.half2
 		if(self.buf[3:4] == self.DC[0:1]):
 			print('Sessão encerrou!')
 			return self.Estados.disc
 
+	def func_timeout(self):
+		if(self.estado == self.Estados.hand1):
+			time_dif = time.time() - self.last_time
+			if(time_dif>self.timeout):
+				self._func_CR()
+		if(self.estado == self.Estados.hand2):
+			time_dif = time.time() - self.last_time
+			if(time_dif>self.timeout):
+				self.estado = self.Estados.disc
+				self.start = False
+				self.last_time = time.time()
 
-	def _set_timeout(self,timeout):
-		#self.read, write, error = select.select([self.arq.enq.serial], [], [], timeout)
-		return

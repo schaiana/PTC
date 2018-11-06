@@ -13,4 +13,4 @@ p_serial = sys.argv[1]
 idSessao = int(sys.argv[2])
 timeout = float(sys.argv[3])
 
-enl = enlayce.Enlayce(p_serial, idSessao, timeout)
+enl = enlayce.Enlayce(p_serial, idSessao, timeout, "10.0.0.1", "10.0.0.2")
