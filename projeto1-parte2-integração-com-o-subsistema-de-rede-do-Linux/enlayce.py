@@ -66,7 +66,7 @@ class Enlayce:
 class CallbackTun(poller.Callback):
     
 	def __init__(self, tun, enl):
-		poller.Callback.__init__(self, tun.fd, 1000)
+		poller.Callback.__init__(self, tun.fd, 1000)# tun.fd file descriptor
 		self._tun = tun
 		self.enl = enl
 
@@ -86,7 +86,7 @@ class CallbackStdin(poller.Callback):
 		self.enl = enl
 
 
-	def handle(self):
+	def handle(self):# o handle vai ser chamado dentro da classe Callback do poller
 		l = self.p_serial.read()
 		#print('Lido serial:', l)
 		if (self.enl.enq.trata_byte(l) == True):
